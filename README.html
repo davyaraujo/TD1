@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>TD1 - Performance de Multiplicação de Matrizes</title>
+  <style>
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    span.underline{text-decoration: underline;}
+    div.column{display: inline-block; vertical-align: top; width: 50%;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    ul.task-list{list-style: none;}
+  </style>
+  <link rel="stylesheet" href="./github-pandoc.css" />
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">TD1 - Performance de Multiplicação de Matrizes</h1>
+</header>
+<nav id="TOC" role="doc-toc">
+<ul>
+<li><a href="#td1">TD1</a>
+<ul>
+<li><a href="#lscpu">lscpu</a></li>
+<li><a href="#produit-matrice-matrice">Produit matrice-matrice</a>
+<ul>
+<li><a href="#effet-de-la-taille-de-la-matrice">Effet de la taille de la matrice</a></li>
+<li><a href="#permutation-des-boucles">Permutation des boucles</a></li>
+<li><a href="#omp-sur-la-meilleure-boucle">OMP sur la meilleure boucle</a></li>
+<li><a href="#produit-par-blocs">Produit par blocs</a></li>
+<li><a href="#bloc-omp">Bloc + OMP</a></li>
+<li><a href="#comparaison-avec-blas-eigen-et-numpy">Comparaison avec BLAS, Eigen et numpy</a></li>
+</ul></li>
+</ul></li>
+<li><a href="#tips">Tips</a></li>
+</ul>
+</nav>
+<h1 id="td1">TD1</h1>
+<p><code>pandoc -s --toc README.md --css=./github-pandoc.css -o README.html</code></p>
+<h2 id="lscpu">lscpu</h2>
+<p><em>lscpu donne des infos utiles sur le processeur : nb core, taille de cache :</em></p>
+<pre><code>Coller ici les infos *utiles* de lscpu.</code></pre>
+<h2 id="produit-matrice-matrice">Produit matrice-matrice</h2>
+<h3 id="effet-de-la-taille-de-la-matrice">Effet de la taille de la matrice</h3>
+<table>
+<thead>
+<tr class="header">
+<th>n</th>
+<th>MFlops</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1024 (origine)</td>
+<td>367.469</td>
+</tr>
+<tr class="even">
+<td></td>
+<td></td>
+</tr>
+<tr class="odd">
+<td></td>
+<td></td>
+</tr>
+<tr class="even">
+<td></td>
+<td></td>
+</tr>
+<tr class="odd">
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>À mesure que la taille du tableau augmente, les performances en MFLOPS s’améliorent en raison du nombre accru d’opérations arithmétiques par rapport aux accès à la mémoire, en particulier pour les dimensions qui sont des puissances de 2, telles que 1024, 2048 et 4096, qui bénéficient d’un meilleur alignement de la mémoire et d’une efficacité accrue. utilisation d’instructions SIMD (telles que AVX). Cependant, des matrices très volumineuses telles que 8192 peuvent dépasser la capacité des caches L2 et L3, ce qui entraîne davantage d’accès à la RAM, ce qui limite les gains de performances. Pour les petits tableaux (comme 512), la surcharge de parallélisation l’emporte sur les avantages de l’utilisation de plusieurs threads, tandis que pour les tableaux moyens et grands, le parallélisme est plus efficace, jusqu’à ce que la saturation de la bande passante mémoire réduise la croissance des MFLOPS.</p>
+<h3 id="permutation-des-boucles">Permutation des boucles</h3>
+<p><em>Expliquer comment est compilé le code (ligne de make ou de gcc) : on aura besoin de savoir l’optim, les paramètres, etc. Par exemple :</em></p>
+<p>Le code est compilé avec la commande make TestProduct.exe &amp;&amp; ./TestProduct.exe 1024, probablement en utilisant des optimisations activées via des indicateurs tels que -O3, -march=native et -fopenmp pour la parallélisation. Ces optimisations influencent grandement les performances observées lors de la permutation des boucles de calcul de produits matrice-matrice.</p>
+<p><code>make TestProduct.exe &amp;&amp; ./TestProduct.exe 1024</code></p>
+<table>
+<thead>
+<tr class="header">
+<th>ordre</th>
+<th>time</th>
+<th>MFlops</th>
+<th>MFlops(n=2048)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>i,j,k (origine)</td>
+<td>2.73764</td>
+<td>782.476</td>
+<td>124.589</td>
+</tr>
+<tr class="even">
+<td>j,i,k</td>
+<td>2.9511</td>
+<td>727.411</td>
+<td>425.987</td>
+</tr>
+<tr class="odd">
+<td>i,k,j</td>
+<td>5.05187</td>
+<td>425.087</td>
+<td></td>
+</tr>
+<tr class="even">
+<td>k,i,j</td>
+<td>5.74445</td>
+<td>373.836</td>
+<td></td>
+</tr>
+<tr class="odd">
+<td>j,k,i</td>
+<td>0.473</td>
+<td>4532.42</td>
+<td></td>
+</tr>
+<tr class="even">
+<td>k,j,i</td>
+<td>0.438</td>
+<td>4902.02</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p><em>Discuter les résultats.</em></p>
+<p>Les résultats montrent que l’ordre d’itération des boucles a un impact significatif sur les performances. Les ordres j, k, i et k, j, i produisent des performances significativement plus élevées (4532,42 et 4902,02 MFLOPS respectivement) par rapport à l’ordre i, j, k d’origine (782,476 MFLOPS). Ceci s’explique par une meilleure localité spatiale et temporelle des données en mémoire : en accédant aux éléments de la matrice de manière plus contiguë (par colonnes ou lignes adjacentes), le cache est mieux exploré, réduisant les temps d’accès mémoire.</p>
+<p>En revanche, les commandes telles que i, k, j et k, i, j fonctionnent nettement moins bien (425 087 et 373 836 MFLOPS), probablement en raison de modèles d’accès à la mémoire médiocres entraînant davantage d’échecs de cache et d’accès coûteux à la mémoire principale. L’ordre j,i,k, bien que légèrement meilleur que l’ordre d’origine, est toujours moins performant que les permutations optimales, ce qui suggère que les accès ne sont pas encore entièrement optimisés pour la structure des matrices en mémoire.</p>
+<h3 id="omp-sur-la-meilleure-boucle">OMP sur la meilleure boucle</h3>
+<p><code>make TestProduct.exe &amp;&amp; OMP_NUM_THREADS=8 ./TestProduct.exe 1024</code></p>
+<table>
+<thead>
+<tr class="header">
+<th>OMP_NUM</th>
+<th>MFlops</th>
+<th>MFlops(n=2048)</th>
+<th>MFlops(n=512)</th>
+<th>MFlops(n=4096)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td>5596.73</td>
+<td>2752.28</td>
+<td>5883.72</td>
+<td>3294.48</td>
+</tr>
+<tr class="even">
+<td>2</td>
+<td>7214.89</td>
+<td>6469.25</td>
+<td>10004.8</td>
+<td>5400.58</td>
+</tr>
+<tr class="odd">
+<td>3</td>
+<td>15456</td>
+<td>8805.97</td>
+<td>11466.5</td>
+<td>8784.04</td>
+</tr>
+<tr class="even">
+<td>4</td>
+<td>16822.9</td>
+<td>12686.5</td>
+<td>14965.3</td>
+<td>11902.5</td>
+</tr>
+<tr class="odd">
+<td>5</td>
+<td>21095.5</td>
+<td>14382.1</td>
+<td>17453.9</td>
+<td></td>
+</tr>
+<tr class="even">
+<td>6</td>
+<td>19006.5</td>
+<td>17188.6</td>
+<td>22786.1</td>
+<td></td>
+</tr>
+<tr class="odd">
+<td>7</td>
+<td>27722.2</td>
+<td>20955.7</td>
+<td>21845.9</td>
+<td></td>
+</tr>
+<tr class="even">
+<td>8</td>
+<td>28461.5</td>
+<td>20894.6</td>
+<td>22070.3</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p><em>Tracer les courbes de speedup (pour chaque valeur de n), discuter les résultats.</em> <img src="image-1.png" alt="alt text" /></p>
+<p>La parallélisation avec OpenMP améliore les performances, en particulier pour les tailles de matrice moyennes à grandes. Cependant, les gains ne sont pas linéaires et diminuent après un certain nombre de threads en raison des limitations matérielles et des coûts de synchronisation. Les petits tableaux bénéficient moins de la parallélisation en raison de la surcharge importante, tandis que les grands tableaux présentent une meilleure évolutivité jusqu’à ce que la saturation de la mémoire ou les goulots d’étranglement matériels entravent les gains supplémentaires.</p>
+<h3 id="produit-par-blocs">Produit par blocs</h3>
+<p><code>make TestProduct.exe &amp;&amp; ./TestProduct.exe 1024</code></p>
+<table>
+<thead>
+<tr class="header">
+<th>szBlock</th>
+<th>MFlops</th>
+<th>MFlops(n=2048)</th>
+<th>MFlops(n=512)</th>
+<th>MFlops(n=4096)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>origine (=max)</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr class="even">
+<td>32</td>
+<td>2367.13</td>
+<td>1031.72</td>
+<td>2005.46</td>
+<td>563.271</td>
+</tr>
+<tr class="odd">
+<td>64</td>
+<td>2586.86</td>
+<td>3118.68</td>
+<td>3445.32</td>
+<td>883.909</td>
+</tr>
+<tr class="even">
+<td>128</td>
+<td>2931.53</td>
+<td>1113.64</td>
+<td>3118.05</td>
+<td>860.831</td>
+</tr>
+<tr class="odd">
+<td>256</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr class="even">
+<td>512</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr class="odd">
+<td>1024</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p><em>Discuter les résultats.</em></p>
+<p>La taille du bloc (szBlock) influence fortement les performances du produit die-die. Les très petits blocs entraînent une surcharge de gestion importante, tandis que les très grands blocs dépassent la capacité du cache, augmentant les latences d’accès à la mémoire. Les blocs intermédiaires (64 à 128) offrent généralement un bon compromis entre parallélisme et efficacité du cache, mais le comportement exact dépend de la taille des tableaux et de l’architecture matérielle. Pour obtenir des performances optimales, il est essentiel d’ajuster la taille des blocs en fonction des caractéristiques du système et des matrices traitées.</p>
+<h3 id="bloc-omp">Bloc + OMP</h3>
+<table>
+<thead>
+<tr class="header">
+<th>szBlock</th>
+<th>OMP_NUM</th>
+<th>MFlops</th>
+<th>MFlops(n=2048)</th>
+<th>MFlops(n=512)</th>
+<th>MFlops(n=4096)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1024</td>
+<td>1</td>
+<td>5442.05</td>
+<td>2760.13</td>
+<td>erro</td>
+<td>2824.34</td>
+</tr>
+<tr class="even">
+<td>1024</td>
+<td>8</td>
+<td>5047.98 6080.29</td>
+<td>erro</td>
+<td>8998.43</td>
+<td></td>
+</tr>
+<tr class="odd">
+<td>512</td>
+<td>1</td>
+<td>5083.59 3374.82</td>
+<td>5511.24</td>
+<td>2658.82</td>
+<td></td>
+</tr>
+<tr class="even">
+<td>512</td>
+<td>8</td>
+<td>6845.32 10380.1</td>
+<td>4810.31</td>
+<td>19657.9</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p><em>Discuter les résultats.</em></p>
+<p>Les résultats montrent que l’optimisation des performances dépend d’un équilibre entre la taille des blocs et le nombre de threads. Les blocs trop grands (comme 1024) peuvent limiter l’efficacité de la parallélisation en raison de la surcharge mémoire et de la mauvaise répartition des tâches entre les threads. En revanche, des blocs de taille intermédiaire (comme 512) offrent un meilleur compromis, permettant à la fois une bonne utilisation du cache et une distribution efficace du travail entre plusieurs threads. Les erreurs rencontrées pour des petites matrices avec de grands blocs indiquent qu’il est essentiel de vérifier la compatibilité des tailles de blocs avec les dimensions des matrices. Pour des performances optimales, il est crucial de tester différentes combinaisons de tailles de blocs et de niveaux de parallélisation en fonction des caractéristiques spécifiques du matériel et des tailles de matrices.</p>
+<h3 id="comparaison-avec-blas-eigen-et-numpy">Comparaison avec BLAS, Eigen et numpy</h3>
+<p><em>Comparer les performances avec un calcul similaire utilisant les bibliothèques d’algèbre linéaire BLAS, Eigen et/ou numpy.</em></p>
+<p>1024 - 5973.89 // 2048 - 3407.83 // 512 - 5858.61 // 4096 - 3148.74</p>
+<p>Son implémentation surpasse BLAS pour les matrices moyennes à grandes grâce à une utilisation efficace de la parallélisation et des optimisations de blocs. Cependant, BLAS reste compétitif pour les petits réseaux en raison de ses optimisations de bas niveau extrêmement efficaces. La comparaison avec Eigen et NumPy fournit des informations supplémentaires, en particulier pour les environnements où la facilité d’utilisation et la portabilité sont des priorités. Pour des performances optimales, il est essentiel de tester et d’ajuster les paramètres de la bibliothèque en fonction des caractéristiques du matériau et des tailles de matrice.</p>
+<h1 id="tips">Tips</h1>
+<pre><code>    env
+    OMP_NUM_THREADS=4 ./produitMatriceMatrice.exe</code></pre>
+<pre><code>    $ for i in $(seq 1 4); do elap=$(OMP_NUM_THREADS=$i ./TestProductOmp.exe|grep &quot;Temps CPU&quot;|cut -d &quot; &quot; -f 7); echo -e &quot;$i\t$elap&quot;; done &gt; timers.out</code></pre>
+</body>
+</html>
