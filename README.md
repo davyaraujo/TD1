@@ -60,18 +60,17 @@ En revanche, les commandes telles que i, k, j et k, i, j fonctionnent nettement 
 
   OMP_NUM         | MFlops  | MFlops(n=2048) | MFlops(n=512)  | MFlops(n=4096)
 ------------------|---------|----------------|----------------|---------------
-1                 |5596.73     2752.28             5883.72      3294.48
-2                 |7214.89     6469.25             10004.8      5400.58
-3                 |15456       8805.97             11466.5      8784.04
-4                 |16822.9     12686.5             14965.3      11902.5
-5                 |21095.5     14382.1            17453.9
-6                 |19006.5     17188.6            22786.1
-7                 |27722.2     20955.7            21845.9
-8                 |28461.5     20894.6            22070.3
+1                 |5596.73  |   2752.28      |      5883.72   |   3294.48
+2                 |7214.89  |  6469.25       |      10004.8   |   5400.58
+3                 |15456    |   8805.97      |       11466.5  |    8784.04
+4                 |16822.9  |   12686.5      |       14965.3  |    11902.5
+5                 |21095.5  |   14382.1      |      17453.9   | 
+6                 |19006.5  |   17188.6      |      22786.1   |
+7                 |27722.2  |   20955.7      |      21845.9   |
+8                 |28461.5  |   20894.6      |      22070.3   |
 
 *Tracer les courbes de speedup (pour chaque valeur de n), discuter les résultats.*
-![alt text](image.png)
-
+![alt text](image-1.png)
 
 La parallélisation avec OpenMP améliore les performances, en particulier pour les tailles de matrice moyennes à grandes. Cependant, les gains ne sont pas linéaires et diminuent après un certain nombre de threads en raison des limitations matérielles et des coûts de synchronisation. Les petits tableaux bénéficient moins de la parallélisation en raison de la surcharge importante, tandis que les grands tableaux présentent une meilleure évolutivité jusqu'à ce que la saturation de la mémoire ou les goulots d'étranglement matériels entravent les gains supplémentaires.
 
@@ -82,13 +81,13 @@ La parallélisation avec OpenMP améliore les performances, en particulier pour 
 
   szBlock         | MFlops  | MFlops(n=2048) | MFlops(n=512)  | MFlops(n=4096)
 ------------------|---------|----------------|----------------|---------------
-origine (=max)    |  
-32                |2367.13    1031.72           2005.46        563.271
-64                |2586.86    3118.68           3445.32        883.909
-128               |2931.53    1113.64           3118.05        860.831 
-256               |
-512               |
-1024              |
+origine (=max)    |         |                |                |
+32                |2367.13  |  1031.72       |     2005.46    |    563.271
+64                |2586.86  |  3118.68       |    3445.32     |   883.909
+128               |2931.53  |  1113.64       |    3118.05     |   860.831 
+256               |         |                |                |
+512               |         |                |                |
+1024              |         |                |                
 
 *Discuter les résultats.*
 
@@ -99,10 +98,10 @@ La taille du bloc (szBlock) influence fortement les performances du produit die-
 
   szBlock      | OMP_NUM | MFlops  | MFlops(n=2048) | MFlops(n=512)  | MFlops(n=4096)|
 ---------------|---------|---------|----------------|----------------|---------------|
-1024           |  1      | 5442.05 | 2760.13        | erro      |      2824.34          
-1024           |  8      | 5047.98   6080.29          erro             8998.43                       
-512            |  1      | 5083.59   3374.82          5511.24          2658.82 
-512            |  8      | 6845.32   10380.1          4810.31          19657.9
+1024           |  1      | 5442.05 | 2760.13        | erro           |   2824.34          
+1024           |  8      | 5047.98   6080.29        |  erro          |   8998.43                       
+512            |  1      | 5083.59   3374.82        |  5511.24       |   2658.82 
+512            |  8      | 6845.32   10380.1        |  4810.31       |   19657.9
 *Discuter les résultats.*
 
 Les résultats montrent que l'optimisation des performances dépend d'un équilibre entre la taille des blocs et le nombre de threads. Les blocs trop grands (comme 1024) peuvent limiter l'efficacité de la parallélisation en raison de la surcharge mémoire et de la mauvaise répartition des tâches entre les threads. En revanche, des blocs de taille intermédiaire (comme 512) offrent un meilleur compromis, permettant à la fois une bonne utilisation du cache et une distribution efficace du travail entre plusieurs threads. Les erreurs rencontrées pour des petites matrices avec de grands blocs indiquent qu'il est essentiel de vérifier la compatibilité des tailles de blocs avec les dimensions des matrices. Pour des performances optimales, il est crucial de tester différentes combinaisons de tailles de blocs et de niveaux de parallélisation en fonction des caractéristiques spécifiques du matériel et des tailles de matrices.
